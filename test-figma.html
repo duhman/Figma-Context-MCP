@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Figma MCP Tester</title>
+    <!-- Add debug mode toggle -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        button.secondary {
+            background-color: #2196F3;
+        }
+        button.danger {
+            background-color: #f44336;
+        }
+        #status, #error, #debug {
+            margin: 20px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        #status {
+            background-color: #e7f3fe;
+            border-left: 6px solid #2196F3;
+        }
+        #error {
+            background-color: #ffdddd;
+            border-left: 6px solid #f44336;
+            display: none;
+        }
+        #debug {
+            background-color: #f8f9fa;
+            border-left: 6px solid #6c757d;
+            display: none;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow: auto;
+        }
+        #response {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 20px;
+            overflow: auto;
+            max-height: 600px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .checkbox-group {
+            margin: 10px 0;
+        }
+        .checkbox-group label {
+            display: inline;
+            font-weight: normal;
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Figma MCP Tester</h1>
+    
+    <div class="form-group">
+        <label for="fileKey">Figma File Key:</label>
+        <input type="text" id="fileKey" value="556ubMePJJrpVqckOCPmop" placeholder="e.g., 556ubMePJJrpVqckOCPmop">
+    </div>
+    
+    <div class="form-group">
+        <label for="nodeId">Node ID (optional):</label>
+        <input type="text" id="nodeId" value="0:1" placeholder="e.g., 0:1">
+        <small style="display: block; margin-top: 5px; color: #666;">Note: Node IDs should be in the format "number:number" (e.g., 0:1, 123:456)</small>
+    </div>
+    
+    <div class="form-group">
+        <label for="depth">Depth (optional):</label>
+        <input type="text" id="depth" placeholder="e.g., 2">
+    </div>
+    
+    <div class="checkbox-group">
+        <input type="checkbox" id="debugMode" name="debugMode">
+        <label for="debugMode">Enable Debug Mode</label>
+    </div>
+    
+    <button id="connectBtn">Connect to SSE</button>
+    <button id="requestBtn" disabled>Request Figma Data</button>
+    <button id="clearBtn" class="secondary" disabled>Clear Response</button>
+    
+    <div id="status">Status: Not connected</div>
+    <div id="error"></div>
+    <div id="debug">Debug information will appear here when debug mode is enabled.</div>
+    
+    <h2>Response:</h2>
+    <pre id="response">No data yet...</pre>
+    
+    <script>
+        // Generate a unique client ID for this session
+        const clientId = `client-${Date.now()}`;
+        let messageId = 1;
+        let eventSource = null;
+        let debugLog = [];
+        
+        // DOM elements
+        const connectBtn = document.getElementById('connectBtn');
+        const requestBtn = document.getElementById('requestBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const statusDiv = document.getElementById('status');
+        const errorDiv = document.getElementById('error');
+        const debugDiv = document.getElementById('debug');
+        const responseDiv = document.getElementById('response');
+        const fileKeyInput = document.getElementById('fileKey');
+        const nodeIdInput = document.getElementById('nodeId');
+        const depthInput = document.getElementById('depth');
+        const debugModeCheckbox = document.getElementById('debugMode');
+        
+        // Debug logging function
+        function logDebug(message, data) {
+            const timestamp = new Date().toISOString();
+            const logEntry = `[${timestamp}] ${message}`;
+            
+            if (data) {
+                debugLog.push(`${logEntry}\n${JSON.stringify(data, null, 2)}`);
+            } else {
+                debugLog.push(logEntry);
+            }
+            
+            if (debugModeCheckbox.checked) {
+                debugDiv.textContent = debugLog.join('\n\n');
+                debugDiv.scrollTop = debugDiv.scrollHeight;
+            }
+            
+            console.log(message, data || '');
+        }
+        
+        // Toggle debug mode
+        debugModeCheckbox.addEventListener('change', () => {
+            debugDiv.style.display = debugModeCheckbox.checked ? 'block' : 'none';
+            if (debugModeCheckbox.checked) {
+                debugDiv.textContent = debugLog.join('\n\n');
+            }
+        });
+        
+        // Clear response
+        clearBtn.addEventListener('click', () => {
+            responseDiv.textContent = 'No data yet...';
+        });
+        
+        // Connect to SSE
+        connectBtn.addEventListener('click', () => {
+            if (eventSource) {
+                logDebug('Closing existing SSE connection');
+                eventSource.close();
+                eventSource = null;
+                connectBtn.textContent = 'Connect to SSE';
+                requestBtn.disabled = true;
+                clearBtn.disabled = true;
+                statusDiv.textContent = 'Status: Disconnected';
+                return;
+            }
+            
+            try {
+                statusDiv.textContent = 'Status: Connecting...';
+                errorDiv.style.display = 'none';
+                
+                // Create SSE connection with explicit headers
+                const sseUrl = `http://localhost:3333/sse?client=${clientId}`;
+                logDebug('Connecting to SSE', { url: sseUrl });
+                
+                eventSource = new EventSource(sseUrl);
+                
+                // Connection opened
+                eventSource.onopen = (event) => {
+                    logDebug('SSE connection opened', event);
+                    statusDiv.textContent = 'Status: Connected to SSE';
+                    connectBtn.textContent = 'Disconnect';
+                    requestBtn.disabled = false;
+                    clearBtn.disabled = false;
+                };
+                
+                // Connection error
+                eventSource.onerror = (error) => {
+                    logDebug('SSE connection error', error);
+                    errorDiv.textContent = `Error: Failed to connect to SSE. Make sure the server is running on port 3333.`;
+                    errorDiv.style.display = 'block';
+                    statusDiv.textContent = 'Status: Connection error';
+                    
+                    // Clean up
+                    if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                    connectBtn.textContent = 'Connect to SSE';
+                    requestBtn.disabled = true;
+                    clearBtn.disabled = true;
+                };
+                
+                // Listen for messages
+                eventSource.addEventListener('message', (event) => {
+                    try {
+                        logDebug('Received SSE message', { raw: event.data });
+                        const data = JSON.parse(event.data);
+                        
+                        // If this is a response to our request, process it
+                        if (data.type === 'response') {
+                            logDebug('Received response', data);
+                            const formattedResponse = JSON.stringify(data, null, 2);
+                            responseDiv.textContent = formattedResponse;
+                            statusDiv.textContent = 'Status: Received response';
+                        }
+                    } catch (error) {
+                        logDebug('Error parsing SSE message', error);
+                        errorDiv.textContent = `Error parsing message: ${error.message}`;
+                        errorDiv.style.display = 'block';
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error setting up SSE:', error);
+                errorDiv.textContent = `Error: ${error.message}`;
+                errorDiv.style.display = 'block';
+                statusDiv.textContent = 'Status: Setup error';
+            }
+        });
+        
+        // Request Figma data
+        requestBtn.addEventListener('click', async () => {
+            const fileKey = fileKeyInput.value.trim();
+            const nodeId = nodeIdInput.value.trim();
+            const depth = depthInput.value.trim() ? parseInt(depthInput.value.trim()) : undefined;
+            
+            if (!fileKey) {
+                errorDiv.textContent = 'Error: File Key is required';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            // Validate node ID format if provided
+            if (nodeId && !/^\d+:\d+$/.test(nodeId)) {
+                errorDiv.textContent = `Error: Invalid node ID format: ${nodeId}. Node IDs should be in the format "number:number" (e.g., 0:1, 123:456)`;
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            try {
+                const requestId = `request-${messageId++}`;
+                statusDiv.textContent = `Status: Sending request ${requestId}...`;
+                errorDiv.style.display = 'none';
+                
+                // Prepare request parameters
+                const params = {
+                    fileKey: fileKey
+                };
+                
+                if (nodeId) params.nodeId = nodeId;
+                if (depth) params.depth = depth;
+                
+                // Prepare request body
+                const requestBody = {
+                    id: requestId,
+                    type: 'request',
+                    method: 'get_figma_data',
+                    params: params
+                };
+                
+                logDebug('Sending request', requestBody);
+                
+                // Send request
+                const response = await fetch('http://localhost:3333/messages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                const responseText = await response.text();
+                logDebug('Received HTTP response', { 
+                    status: response.status, 
+                    statusText: response.statusText,
+                    headers: Object.fromEntries([...response.headers]),
+                    body: responseText
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status} - ${responseText}`);
+                }
+                
+                statusDiv.textContent = `Status: Request ${requestId} sent, waiting for response...`;
+                
+            } catch (error) {
+                logDebug('Error sending request', error);
+                errorDiv.textContent = `Error sending request: ${error.message}`;
+                errorDiv.style.display = 'block';
+                statusDiv.textContent = 'Status: Request error';
+            }
+        });
+    </script>
+</body>
+</html>

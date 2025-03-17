@@ -148,23 +148,33 @@ The server provides the following MCP tools:
 
 ### get_figma_data
 
-Fetches information about a Figma file or a specific node within a file.
+Retrieve design information from a Figma file. This tool can fetch either an entire file or a specific node within a file. Use this to analyze designs, extract layout information, styles, and component hierarchies.
 
 Parameters:
 
-- `fileKey` (string, required): The key of the Figma file to fetch, often found in a provided URL like `figma.com/(file|design)/<fileKey>/...`
-- `nodeId` (string, optional, **highly recommended**): The ID of the node to fetch, often found as URL parameter node-id=<nodeId>
-- `depth` (number, optional): How many levels deep to traverse the node tree, only used if explicitly requested by you via chat
+- `fileKey` (string, required): The key of the Figma file to fetch. This is a required parameter and can be extracted from a Figma URL. Example: In 'https://www.figma.com/file/abcd1234/MyDesign', the fileKey is 'abcd1234'.
+- `nodeId` (string, optional, **highly recommended**): The ID of a specific node to fetch within the file. This is optional and typically found as a URL parameter 'node-id=123:456'. If not provided, the entire file structure will be returned. Always use this parameter when available for more targeted results.
+- `depth` (number, optional): Controls how many levels of child nodes to include in the response. Default is to include all levels. Use smaller values (1-3) for large files to improve performance. Only specify this parameter when explicitly requested or when dealing with very large files.
 
-### download_figma_images (work in progress)
+### download_figma_images
 
-Download SVG and PNG images used in a Figma file based on the IDs of image or icon nodes.
+Download SVG and PNG images from a Figma file to a local directory. This tool can retrieve both vector graphics (as SVG) and raster images (as PNG) used in designs. Use this to extract icons, illustrations, or any visual assets from a Figma file for implementation in a project.
 
 Parameters:
 
-- `fileKey` (string, required): The key of the Figma file containing the node
-- `nodes` (array, required): The nodes to fetch as images
-  - `nodeId` (string, required): The ID of the Figma image node to fetch, formatted as 1234:5678
-  - `imageRef` (string, optional): If a node has an imageRef fill, you must include this variable. Leave blank when downloading Vector SVG images.
-  - `fileName` (string, required): The local name for saving the fetched file
-- `localPath` (string, required): The absolute path to the directory where images are stored in the project. Automatically creates directories if needed.
+- `fileKey` (string, required): The key of the Figma file containing the images. This is a required parameter extracted from the Figma URL (e.g., 'abcd1234' from 'https://www.figma.com/file/abcd1234/MyDesign').
+- `nodes` (array, required): An array of image nodes to download. Each object must specify nodeId and fileName, with imageRef required only for image fills.
+  - `nodeId` (string, required): The ID of the Figma node to fetch as an image, formatted as '1234:5678'. This is the unique identifier for the element in the Figma file.
+  - `imageRef` (string, optional): For nodes with image fills (like rectangles with background images), provide the imageRef value from the node data. Required only for image fills. Leave blank for vector nodes (SVGs) or direct image nodes.
+  - `fileName` (string, required): The filename to use when saving the image locally. Include the appropriate extension (.svg or .png) based on the desired output format.
+- `localPath` (string, required): The absolute path to the directory where images will be saved (e.g., '/path/to/project/assets/images'). The tool will automatically create this directory and any parent directories if they don't exist.
+
+## Recent Improvements
+
+### Version 0.1.8 Updates
+
+- **Enhanced Error Handling**: Improved error handling with structured error responses that provide clear guidance on what went wrong and how to fix it.
+- **Input Validation**: Added robust input validation to ensure all parameters are correctly formatted before processing, preventing common errors.
+- **Improved Logging**: Implemented a comprehensive logging system with different severity levels for better debugging and monitoring.
+- **Updated MCP SDK**: Updated to the latest MCP SDK (version 1.7.0) to leverage the newest features and improvements.
+- **Better Documentation**: Enhanced tool descriptions and parameter documentation to provide clearer guidance for AI assistants on proper usage.
