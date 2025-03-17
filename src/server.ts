@@ -201,23 +201,51 @@ export class FigmaMcpServer {
   async startHttpServer(port: number): Promise<void> {
     const app = express();
     
-    // Enable CORS for all routes
+    // Enable CORS for all routes with expanded configuration
     app.use(cors({
       origin: '*', // Allow all origins
-      methods: ['GET', 'POST'],
-      allowedHeaders: ['Content-Type']
+      methods: ['GET', 'POST', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Accept', 'Cache-Control', 'X-Requested-With'],
+      credentials: true,
+      maxAge: 86400 // 24 hours
     }));
     
     app.use(express.json());
 
+    // Handle preflight OPTIONS requests for SSE endpoint
+    app.options("/sse", (req: Request, res: Response) => {
+      // Log the preflight request
+      console.log("Received OPTIONS preflight for SSE:", {
+        origin: req.headers.origin,
+        headers: req.headers
+      });
+      
+      // Set CORS headers
+      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Cache-Control, X-Requested-With");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Max-Age", "86400"); // 24 hours
+      
+      // End the preflight request successfully
+      res.status(204).end();
+    });
+    
     app.get("/sse", async (req: Request, res: Response) => {
+      // Log the origin for debugging
+      console.log("SSE request origin:", req.headers.origin);
+      
       // Set SSE headers
       res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("Connection", "keep-alive");
-      // Add CORS headers for SSE
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET");
+      
+      // Add comprehensive CORS headers for SSE - use the actual origin if available
+      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Cache-Control, X-Requested-With");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Max-Age", "86400"); // 24 hours
       
       // Log connection details
       console.log("New SSE connection established:", {
@@ -226,45 +254,101 @@ export class FigmaMcpServer {
         url: req.url
       });
       
+      // Send a heartbeat immediately to ensure the connection is working
+      res.write(":\n\n"); // SSE comment line as a heartbeat
+      
+      // Create a new SSE transport with the response
       this.sseTransport = new SSEServerTransport(
         "/messages",
         res as unknown as ServerResponse<IncomingMessage>,
       );
       
+      // Add a timestamp to track when the transport was created
+      const transportCreatedAt = Date.now();
+      console.log(`SSE transport created at ${new Date(transportCreatedAt).toISOString()}`);
+      
       try {
+        // Connect the transport to the server
         await this.server.connect(this.sseTransport);
-        console.log("SSE transport connected successfully");
+        console.log(`SSE transport connected successfully after ${Date.now() - transportCreatedAt}ms`);
+        
+        // Send another heartbeat to confirm the connection is fully established
+        res.write(":heartbeat\n\n");
       } catch (error) {
         console.error("Error connecting SSE transport:", error);
         res.status(500).end();
       }
     });
 
+    // Handle preflight OPTIONS requests for messages endpoint
+    app.options("/messages", (req: Request, res: Response) => {
+      // Log the preflight request
+      console.log("Received OPTIONS preflight for messages:", {
+        origin: req.headers.origin,
+        headers: req.headers
+      });
+      
+      // Set CORS headers
+      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Cache-Control, X-Requested-With");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Max-Age", "86400"); // 24 hours
+      
+      // End the preflight request successfully
+      res.status(204).end();
+    });
+    
     app.post("/messages", async (req: Request, res: Response) => {
-      console.log('Received POST request to /messages:', {
+      // Set CORS headers for the response
+      res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Cache-Control, X-Requested-With");
+      
+      const requestId = req.body?.id || 'unknown';
+      console.log(`Received POST request to /messages (${requestId}):`, {
         body: req.body,
         headers: req.headers,
         hasSSETransport: !!this.sseTransport
       });
       
       if (!this.sseTransport) {
-        console.log('Rejecting request: No active SSE connection');
+        console.log(`Rejecting request ${requestId}: No active SSE connection`);
         res.status(400).send('No active SSE connection. Connect to /sse endpoint first.');
         return;
       }
       
+      // We don't have a direct way to check if the transport is connected,
+      // but we can check if it exists and assume it's in a valid state
+      // The actual connection errors will be caught in the try/catch block
+      
       try {
+        console.log(`Processing request ${requestId} through SSE transport`);
         await this.sseTransport.handlePostMessage(
           req as unknown as IncomingMessage,
           res as unknown as ServerResponse<IncomingMessage>,
         );
-        console.log('Successfully handled message');
+        console.log(`Successfully handled message ${requestId}`);
       } catch (error) {
-        console.error('Error handling message:', error);
-        res.status(500).send('Error handling message');
+        console.error(`Error handling message ${requestId}:`, error);
+        
+        // Provide more detailed error information
+        const errorMessage = error instanceof Error ? 
+          `Error handling message: ${error.message}` : 
+          'Unknown error handling message';
+        
+        res.status(500).send(errorMessage);
       }
     });
 
+    // Serve static files from the root directory
+    app.use(express.static('.'));
+    
+    // Serve the test page at the root URL
+    app.get('/', (req: Request, res: Response) => {
+      res.sendFile('test-figma.html', { root: '.' });
+    });
+    
     // Initialize the Logger for HTTP mode after server is connected
     Logger.initialize(this.server, true);
 
@@ -273,6 +357,8 @@ export class FigmaMcpServer {
       console.log(`HTTP server listening on port ${port}`);
       console.log(`SSE endpoint available at http://localhost:${port}/sse`);
       console.log(`Message endpoint available at http://localhost:${port}/messages`);
+      console.log(`Test page available at http://localhost:${port}/`);
+      console.log(`Test page also available at http://localhost:${port}/test-figma.html`);
     });
   }
 }

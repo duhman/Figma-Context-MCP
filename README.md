@@ -15,7 +15,7 @@ npx figma-developer-mcp --figma-api-key=<your-figma-api-key>
 [Watch a demo of building a UI in Cursor with Figma design data](https://youtu.be/6G9yb-LrEqg)
 [![Watch the video](https://img.youtube.com/vi/6G9yb-LrEqg/maxresdefault.jpg)](https://youtu.be/6G9yb-LrEqg)
 
-<a href="https://glama.ai/mcp/servers/kcftotr525"><img width="380" height="200" src="https://glama.ai/mcp/servers/kcftotr525/badge" alt="Figma Server MCP server" /></a>
+[![Figma Server MCP server](https://glama.ai/mcp/servers/kcftotr525/badge)](https://glama.ai/mcp/servers/kcftotr525)
 
 ## How it works
 
@@ -152,7 +152,7 @@ Retrieve design information from a Figma file. This tool can fetch either an ent
 
 Parameters:
 
-- `fileKey` (string, required): The key of the Figma file to fetch. This is a required parameter and can be extracted from a Figma URL. Example: In 'https://www.figma.com/file/abcd1234/MyDesign', the fileKey is 'abcd1234'.
+- `fileKey` (string, required): The key of the Figma file to fetch. This is a required parameter and can be extracted from a Figma URL. Example: In `https://www.figma.com/file/abcd1234/MyDesign`, the fileKey is `abcd1234`.
 - `nodeId` (string, optional, **highly recommended**): The ID of a specific node to fetch within the file. This is optional and typically found as a URL parameter 'node-id=123:456'. If not provided, the entire file structure will be returned. Always use this parameter when available for more targeted results.
 - `depth` (number, optional): Controls how many levels of child nodes to include in the response. Default is to include all levels. Use smaller values (1-3) for large files to improve performance. Only specify this parameter when explicitly requested or when dealing with very large files.
 
@@ -162,7 +162,7 @@ Download SVG and PNG images from a Figma file to a local directory. This tool ca
 
 Parameters:
 
-- `fileKey` (string, required): The key of the Figma file containing the images. This is a required parameter extracted from the Figma URL (e.g., 'abcd1234' from 'https://www.figma.com/file/abcd1234/MyDesign').
+- `fileKey` (string, required): The key of the Figma file containing the images. This is a required parameter extracted from the Figma URL (e.g., `abcd1234` from `https://www.figma.com/file/abcd1234/MyDesign`).
 - `nodes` (array, required): An array of image nodes to download. Each object must specify nodeId and fileName, with imageRef required only for image fills.
   - `nodeId` (string, required): The ID of the Figma node to fetch as an image, formatted as '1234:5678'. This is the unique identifier for the element in the Figma file.
   - `imageRef` (string, optional): For nodes with image fills (like rectangles with background images), provide the imageRef value from the node data. Required only for image fills. Leave blank for vector nodes (SVGs) or direct image nodes.
@@ -178,3 +178,63 @@ Parameters:
 - **Improved Logging**: Implemented a comprehensive logging system with different severity levels for better debugging and monitoring.
 - **Updated MCP SDK**: Updated to the latest MCP SDK (version 1.7.0) to leverage the newest features and improvements.
 - **Better Documentation**: Enhanced tool descriptions and parameter documentation to provide clearer guidance for AI assistants on proper usage.
+- **Integrated Test Page**: Added a built-in test page accessible directly from the server for easier debugging and testing.
+- **Connection Management**: Implemented proper connection readiness checks and timing to ensure stable SSE connections.
+- **Same-Origin Architecture**: Eliminated cross-origin issues by serving the test interface from the same server.
+
+## Testing and Debugging
+
+### Built-in Test Interface
+
+The server now includes a built-in test interface that allows you to interact with the Figma MCP server directly from your browser. This makes it easier to test and debug your setup without needing external tools.
+
+To access the test interface:
+
+1. Start the server as described in the [Configuration](#configuration) section
+2. Open your browser and navigate to `http://localhost:3333/` (or whatever port you've configured)
+3. Use the interface to connect to the SSE endpoint and send requests to the Figma API
+
+### Connection Management
+
+The server implements several features to ensure stable and reliable SSE connections:
+
+1. **Connection Readiness**: The server waits for the SSE connection to be fully established before allowing requests to be sent. This prevents "stream is not readable" errors that can occur when requests are sent too early.
+
+2. **Same-Origin Architecture**: The test interface is served directly from the Express server, eliminating cross-origin issues that can occur with EventSource connections.
+
+3. **Detailed Error Reporting**: When connection issues occur, the server provides detailed error messages that help identify the root cause, such as CORS issues or invalid parameters.
+
+4. **Heartbeat Messages**: The server sends regular heartbeat messages to keep the SSE connection alive and detect disconnections early.
+
+### Test Interface Features
+
+- **SSE Connection Management**: Connect to and disconnect from the SSE endpoint with a single click
+- **Request Builder**: Easily construct requests to the Figma API with proper parameter validation
+- **Debug Mode**: Toggle detailed logging to see exactly what's happening with your requests
+- **Response Viewer**: View formatted responses from the Figma API
+- **Error Handling**: Clear error messages help you understand and fix issues quickly
+
+### Error Handling
+
+The server implements robust error handling to provide clear guidance when issues occur:
+
+1. **Structured Error Responses**: All errors are returned in a consistent format with a message, error type, and additional details when available.
+
+2. **Input Validation**: Parameters are validated before processing to catch common errors like invalid file keys or node IDs.
+
+3. **API Error Translation**: Errors from the Figma API are translated into more user-friendly messages that provide clear guidance on how to resolve the issue.
+
+4. **Logging**: Detailed logs are generated at different severity levels to help diagnose issues during development and production.
+
+### Troubleshooting
+
+If you encounter issues with the Figma MCP server, here are some common troubleshooting steps:
+
+1. **Check your Figma API key**: Ensure your API key is valid and has the necessary permissions.
+2. **Verify server logs**: Check the console output for any error messages or warnings.
+3. **Test with the built-in interface**: Use the test interface at `http://localhost:3333/` to verify the server is working correctly.
+4. **Validate node IDs**: Ensure node IDs are in the correct format (e.g., `0:1` not `0-1`).
+5. **Check network connectivity**: Ensure your firewall isn't blocking connections to the Figma API.
+6. **Restart the server**: Sometimes simply restarting the server can resolve connection issues.
+7. **Enable debug mode**: In the test interface, enable debug mode to see detailed logs of the requests and responses.
+8. **Check for CORS issues**: If you're accessing the server from a different origin, ensure CORS is properly configured.

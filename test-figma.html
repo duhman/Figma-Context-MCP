@@ -205,36 +205,71 @@
                 statusDiv.textContent = 'Status: Connecting...';
                 errorDiv.style.display = 'none';
                 
-                // Create SSE connection with explicit headers
-                const sseUrl = `http://localhost:3333/sse?client=${clientId}`;
+                // Create SSE connection with relative URL to ensure same-origin
+                const sseUrl = `/sse?client=${clientId}`;
                 logDebug('Connecting to SSE', { url: sseUrl });
                 
-                eventSource = new EventSource(sseUrl);
+                // Add a timestamp to help avoid caching issues
+                const nocacheUrl = `${sseUrl}&_=${Date.now()}`;
+                
+                // Try to create EventSource with credentials
+                try {
+                    logDebug('Attempting to create EventSource with withCredentials=true');
+                    eventSource = new EventSource(nocacheUrl, { withCredentials: true });
+                } catch (error) {
+                    // If that fails, try without credentials
+                    logDebug('EventSource with credentials failed, trying without credentials', error);
+                    eventSource = new EventSource(nocacheUrl, { withCredentials: false });
+                }
+                
+                // Track connection readiness
+                let connectionReady = false;
                 
                 // Connection opened
                 eventSource.onopen = (event) => {
                     logDebug('SSE connection opened', event);
-                    statusDiv.textContent = 'Status: Connected to SSE';
+                    statusDiv.textContent = 'Status: Connected to SSE - Waiting for server readiness';
                     connectBtn.textContent = 'Disconnect';
-                    requestBtn.disabled = false;
-                    clearBtn.disabled = false;
+                    
+                    // Wait a moment to ensure the server has fully established the connection
+                    setTimeout(() => {
+                        connectionReady = true;
+                        statusDiv.textContent = 'Status: Connected to SSE - Ready for requests';
+                        requestBtn.disabled = false;
+                        clearBtn.disabled = false;
+                        logDebug('Connection ready for requests');
+                    }, 1000); // Wait 1 second for the connection to fully establish
                 };
                 
                 // Connection error
                 eventSource.onerror = (error) => {
                     logDebug('SSE connection error', error);
-                    errorDiv.textContent = `Error: Failed to connect to SSE. Make sure the server is running on port 3333.`;
-                    errorDiv.style.display = 'block';
-                    statusDiv.textContent = 'Status: Connection error';
                     
-                    // Clean up
-                    if (eventSource) {
-                        eventSource.close();
-                        eventSource = null;
-                    }
-                    connectBtn.textContent = 'Connect to SSE';
-                    requestBtn.disabled = true;
-                    clearBtn.disabled = true;
+                    // Check if the server is running using relative URL
+                    fetch('/messages', { method: 'OPTIONS' })
+                        .then(response => {
+                            if (response.ok) {
+                                errorDiv.textContent = `Error: SSE connection failed but server is reachable. This might be a CORS issue. Try running both the server and this page from the same origin.`;
+                            } else {
+                                errorDiv.textContent = `Error: Failed to connect to SSE. Server returned status ${response.status}.`;
+                            }
+                        })
+                        .catch(() => {
+                            errorDiv.textContent = `Error: Failed to connect to SSE. Make sure the server is running on port 3333.`;
+                        })
+                        .finally(() => {
+                            errorDiv.style.display = 'block';
+                            statusDiv.textContent = 'Status: Connection error';
+                            
+                            // Clean up
+                            if (eventSource) {
+                                eventSource.close();
+                                eventSource = null;
+                            }
+                            connectBtn.textContent = 'Connect to SSE';
+                            requestBtn.disabled = true;
+                            clearBtn.disabled = true;
+                        });
                 };
                 
                 // Listen for messages
@@ -277,6 +312,13 @@
                 return;
             }
             
+            // Check if the connection is ready for requests
+            if (!connectionReady) {
+                errorDiv.textContent = 'Error: SSE connection not fully established yet. Please wait a moment and try again.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
             // Validate node ID format if provided
             if (nodeId && !/^\d+:\d+$/.test(nodeId)) {
                 errorDiv.textContent = `Error: Invalid node ID format: ${nodeId}. Node IDs should be in the format "number:number" (e.g., 0:1, 123:456)`;
@@ -307,8 +349,8 @@
                 
                 logDebug('Sending request', requestBody);
                 
-                // Send request
-                const response = await fetch('http://localhost:3333/messages', {
+                // Send request using relative URL to ensure same-origin
+                const response = await fetch('/messages', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
